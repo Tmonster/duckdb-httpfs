@@ -172,11 +172,10 @@ S3AuthParams S3AuthParams::ReadFrom(optional_ptr<FileOpener> opener, FileOpenerI
 	KeyValueSecretReader secret_reader(*opener, info, secret_types, 3);
 
 	// These settings we just set or leave to their S3AuthParams default value
-	secret_reader.TryGetSecretKeyOrSetting("region", "s3_region", result.region);
+	auto region_setting_result = secret_reader.TryGetSecretKeyOrSetting("region", "s3_region", result.region);
 	secret_reader.TryGetSecretKeyOrSetting("key_id", "s3_access_key_id", result.access_key_id);
 	secret_reader.TryGetSecretKeyOrSetting("secret", "s3_secret_access_key", result.secret_access_key);
 	secret_reader.TryGetSecretKeyOrSetting("session_token", "s3_session_token", result.session_token);
-	secret_reader.TryGetSecretKeyOrSetting("region", "s3_region", result.region);
 	secret_reader.TryGetSecretKeyOrSetting("use_ssl", "s3_use_ssl", result.use_ssl);
 	secret_reader.TryGetSecretKeyOrSetting("kms_key_id", "s3_kms_key_id", result.kms_key_id);
 	secret_reader.TryGetSecretKeyOrSetting("s3_url_compatibility_mode", "s3_url_compatibility_mode",
@@ -196,8 +195,13 @@ S3AuthParams S3AuthParams::ReadFrom(optional_ptr<FileOpener> opener, FileOpenerI
 		}
 	}
 
+
 	if (result.endpoint.empty()) {
-		result.endpoint = "s3.amazonaws.com";
+		if (region_setting_result.GetScope() == SettingScope::SECRET) {
+			result.endpoint = "s3." + result.region + ".amazonaws.com";
+		} else {
+			result.endpoint = "s3.amazonaws.com";
+		}
 	}
 
 	return result;
@@ -1019,10 +1023,10 @@ string AWSListObjectV2::Request(string &path, HTTPParams &http_params, S3AuthPar
 	    create_s3_header(req_path, req_params, parsed_url.host, "s3", "GET", s3_auth_params, "", "", "", "");
 
 	// Get requests use fresh connection
-	auto client = http_params.http_util.InitializeClient(http_params, parsed_url.http_proto + parsed_url.host);
+	string full_host = parsed_url.http_proto + parsed_url.host;
 	std::stringstream response;
 	GetRequestInfo get_request(
-	    parsed_url.host, listobjectv2_url, header_map, http_params,
+	    full_host, listobjectv2_url, header_map, http_params,
 	    [&](const HTTPResponse &response) {
 		    if (static_cast<int>(response.status) >= 400) {
 			    string trimmed_path = path;
