@@ -172,7 +172,7 @@ S3AuthParams S3AuthParams::ReadFrom(optional_ptr<FileOpener> opener, FileOpenerI
 	KeyValueSecretReader secret_reader(*opener, info, secret_types, 3);
 
 	// These settings we just set or leave to their S3AuthParams default value
-	secret_reader.TryGetSecretKeyOrSetting("region", "s3_region", result.region);
+	auto region_setting_result = secret_reader.TryGetSecretKeyOrSetting("region", "s3_region", result.region);
 	secret_reader.TryGetSecretKeyOrSetting("key_id", "s3_access_key_id", result.access_key_id);
 	secret_reader.TryGetSecretKeyOrSetting("secret", "s3_secret_access_key", result.secret_access_key);
 	secret_reader.TryGetSecretKeyOrSetting("session_token", "s3_session_token", result.session_token);
@@ -195,8 +195,13 @@ S3AuthParams S3AuthParams::ReadFrom(optional_ptr<FileOpener> opener, FileOpenerI
 		}
 	}
 
-	if (result.endpoint.empty() || (result.endpoint == "s3.amazonaws.com" && !result.region.empty())) {
-		result.endpoint = "s3." + result.region + ".amazonaws.com";
+
+	if (result.endpoint.empty()) {
+		if (region_setting_result.GetScope() == SettingScope::SECRET) {
+			result.endpoint = "s3." + result.region + ".amazonaws.com";
+		} else {
+			result.endpoint = "s3.amazonaws.com";
+		}
 	}
 
 	return result;
