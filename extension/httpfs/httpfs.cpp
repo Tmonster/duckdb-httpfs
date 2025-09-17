@@ -130,7 +130,18 @@ unique_ptr<HTTPResponse> HTTPFileSystem::HeadRequest(FileHandle &handle, string 
 	HeadRequestInfo head_request(url, header_map, hfh.http_params);
 	auto response = http_util.Request(head_request, http_client);
 
-	hfh.StoreClient(std::move(http_client));
+	// if the response status has a redirect, you should not store the client, since the
+	// redirect may be to a different url.
+	bool store_client = true;
+	auto response_status = static_cast<uint16_t>(response->status);
+	if (response_status >= 300 && response_status < 400) {
+		if (handle.path.find("s3://") != string::npos) {
+			store_client = false;
+		}
+	}
+	if (store_client) {
+		hfh.StoreClient(std::move(http_client));
+	}
 	return response;
 }
 
@@ -141,7 +152,18 @@ unique_ptr<HTTPResponse> HTTPFileSystem::DeleteRequest(FileHandle &handle, strin
 	DeleteRequestInfo delete_request(url, header_map, hfh.http_params);
 	auto response = http_util.Request(delete_request, http_client);
 
-	hfh.StoreClient(std::move(http_client));
+	// if the response status has a redirect, you should not store the client, since the
+	// redirect may be to a different url.
+	bool store_client = true;
+	auto response_status = static_cast<uint16_t>(response->status);
+	if (response_status >= 300 && response_status < 400) {
+		if (handle.path.find("s3://") != string::npos) {
+			store_client = false;
+		}
+	}
+	if (store_client) {
+		hfh.StoreClient(std::move(http_client));
+	}
 	return response;
 }
 
@@ -200,7 +222,18 @@ unique_ptr<HTTPResponse> HTTPFileSystem::GetRequest(FileHandle &handle, string u
 
 	auto response = http_util.Request(get_request, http_client);
 
-	hfh.StoreClient(std::move(http_client));
+	// if the response status has a redirect, you should not store the client, since the
+	// redirect may be to a different url.
+	bool store_client = true;
+	auto response_status = static_cast<uint16_t>(response->status);
+	if (response_status >= 300 && response_status < 400) {
+		if (handle.path.find("s3://") != string::npos) {
+			store_client = false;
+		}
+	}
+	if (store_client) {
+		hfh.StoreClient(std::move(http_client));
+	}
 	return response;
 }
 
@@ -272,7 +305,18 @@ unique_ptr<HTTPResponse> HTTPFileSystem::GetRangeRequest(FileHandle &handle, str
 
 	auto response = http_util.Request(get_request, http_client);
 
-	hfh.StoreClient(std::move(http_client));
+	// if the response status has a redirect, you should not store the client, since the
+	// redirect may be to a different url.
+	bool store_client = true;
+	auto response_status = static_cast<uint16_t>(response->status);
+	if (response_status >= 300 && response_status < 400) {
+		if (handle.path.find("s3://") != string::npos) {
+			store_client = false;
+		}
+	}
+	if (store_client) {
+		hfh.StoreClient(std::move(http_client));
+	}
 	return response;
 }
 
@@ -792,7 +836,6 @@ unique_ptr<HTTPClient> HTTPFileHandle::GetClient() {
 	if (cached_client) {
 		return cached_client;
 	}
-
 	// Create a new client
 	return CreateClient();
 }

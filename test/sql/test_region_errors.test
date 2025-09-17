@@ -19,19 +19,32 @@ CREATE or replace SECRET s1 (
     SECRET '${AWS_SECRET_ACCESS_KEY}'
 )
 
+statement ok
+set s3_region='';
+
 # no region set, no error
-statement error
+statement ok
 select * from 's3://clickhouse-public-datasets/hits_compatible/hits.parquet' limit 1;
 ----
-<REGEX>:.*HTTP Error.*Bad Request.*this can be caused by the S3 region being set incorrectly.*No region is provided.*
 
 
 statement ok
 set s3_region='us-east-1';
 
-# incorrect region set, error suggesting incorrect region
-statement error
+# incorrect region set, no error
+statement ok
 select * from 's3://clickhouse-public-datasets/hits_compatible/hits.parquet' limit 1;
+
+# see there has been a redirect
+query II
+select * from duckdb_logs();
 ----
-<REGEX>:.*Bad Request - this can be caused by the S3 region being set incorrectly.*Provided region is "us-east-1".*
+
+statement ok
+set s3_region='eu-central-1';
+
+# correct region also works.
+statement ok
+select * from 's3://clickhouse-public-datasets/hits_compatible/hits.parquet' limit 1;
+
 

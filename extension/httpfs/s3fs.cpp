@@ -183,6 +183,15 @@ S3AuthParams AWSEnvironmentCredentialsProvider::CreateParams() {
 	return params;
 }
 
+void S3AuthParams::OverwriteRegionAndEndpoint(string &region) {
+	D_ASSERT(!region.empty());
+	D_ASSERT(!endpoint.empty());
+	this->region = region;
+	if (!this->endpoint.empty()) {
+		this->endpoint = StringUtil::Format("s3.%s.amazonaws.com", this->region);
+	}
+}
+
 S3AuthParams S3AuthParams::ReadFrom(optional_ptr<FileOpener> opener, FileOpenerInfo &info) {
 	auto result = S3AuthParams();
 
@@ -836,22 +845,37 @@ void S3FileHandle::Initialize(optional_ptr<FileOpener> opener) {
 		HTTPFileHandle::Initialize(opener);
 	} catch (std::exception &ex) {
 		ErrorData error(ex);
+		bool incorrect_region_supplied = false;
 		bool refreshed_secret = false;
+		auto &extra_info = error.ExtraInfo();
+		auto entry = extra_info.find("status_code");
+		string new_region = "";
 		if (error.Type() == ExceptionType::IO || error.Type() == ExceptionType::HTTP) {
-			auto context = opener->TryGetClientContext();
-			if (context) {
-				auto transaction = CatalogTransaction::GetSystemCatalogTransaction(*context);
-				for (const string type : {"s3", "r2", "gcs", "aws"}) {
-					auto res = context->db->GetSecretManager().LookupSecret(transaction, path, type);
-					if (res.HasMatch()) {
-						refreshed_secret |= CreateS3SecretFunctions::TryRefreshS3Secret(*context, *res.secret_entry);
+			if (entry->second == "301") {
+				auto region_header = extra_info.find("header_x-amz-bucket-region");
+				if (region_header != extra_info.end()) {
+					auth_params.region = region_header->second;
+					new_region = region_header->second;
+					incorrect_region_supplied = true;
+					// FIXME: add log that we are trying a different region.
+				} else {
+					auto extra_text = S3FileSystem::GetS3BadRequestError(auth_params);
+					throw Exception(error.Type(), error.RawMessage() + extra_text, extra_info);
+				}
+			} else {
+				auto context = opener->TryGetClientContext();
+				if (context) {
+					auto transaction = CatalogTransaction::GetSystemCatalogTransaction(*context);
+					for (const string type : {"s3", "r2", "gcs", "aws"}) {
+						auto res = context->db->GetSecretManager().LookupSecret(transaction, path, type);
+						if (res.HasMatch()) {
+							refreshed_secret |= CreateS3SecretFunctions::TryRefreshS3Secret(*context, *res.secret_entry);
+						}
 					}
 				}
 			}
 		}
-		if (!refreshed_secret) {
-			auto &extra_info = error.ExtraInfo();
-			auto entry = extra_info.find("status_code");
+		if (!refreshed_secret && !incorrect_region_supplied) {
 			if (entry != extra_info.end()) {
 				if (entry->second == "400") {
 					// 400: BAD REQUEST
@@ -880,11 +904,12 @@ void S3FileHandle::Initialize(optional_ptr<FileOpener> opener) {
 		// We have succesfully refreshed a secret: retry initializing with new credentials
 		FileOpenerInfo info = {path};
 		auth_params = S3AuthParams::ReadFrom(opener, info);
+		// pass correct region from redirect response
+		auth_params.OverwriteRegionAndEndpoint(new_region);
 		HTTPFileHandle::Initialize(opener);
 	}
 
 	auto &s3fs = file_system.Cast<S3FileSystem>();
-
 	if (flags.OpenForWriting()) {
 		auto aws_minimum_part_size = 5242880; // 5 MiB https://docs.aws.amazon.com/AmazonS3/latest/userguide/qfacts.html
 		auto max_part_count = config_params.max_parts_per_file;
