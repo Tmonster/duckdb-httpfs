@@ -1,0 +1,54 @@
+# name: test/sql/test_region_errors.test
+# description: This test triggers the http prefetch mechanism.
+# group: [csv]
+
+require httpfs
+
+require parquet
+
+require-env AWS_ACCESS_KEY_ID
+
+require-env AWS_SECRET_ACCESS_KEY
+
+set ignore_error_messages
+
+statement ok
+CREATE or replace SECRET s1 (
+    TYPE S3,
+    KEY_ID '${AWS_ACCESS_KEY_ID}',
+    SECRET '${AWS_SECRET_ACCESS_KEY}'
+)
+
+statement ok
+set s3_region='';
+
+# no region set, no error
+statement error
+select * from 's3://clickhouse-public-datasets/hits_compatible/hits.parquet' limit 1;
+----
+HTTP Error:
+
+statement ok
+set s3_region='us-east-1';
+
+# incorrect region set, no error
+statement error
+select * from 's3://clickhouse-public-datasets/hits_compatible/hits.parquet' limit 1;
+----
+HTTP Error:
+
+mode output_result
+
+# see there has been a redirect
+query III
+select request.url, request.type, response.status from duckdb_logs_parsed('HTTP');
+----
+
+statement ok
+set s3_region='eu-central-1';
+
+# correct region also works.
+statement ok
+select * from 's3://clickhouse-public-datasets/hits_compatible/hits.parquet' limit 1;
+
+

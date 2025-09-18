@@ -30,13 +30,13 @@ public:
 class HTTPClientCache {
 public:
 	//! Get a client from the client cache
-	unique_ptr<HTTPClient> GetClient();
+	unique_ptr<HTTPClient> GetClient(string host);
 	//! Store a client in the cache for reuse
-	void StoreClient(unique_ptr<HTTPClient> client);
+	void StoreClient(string host, unique_ptr<HTTPClient> client);
 
 protected:
-	//! The cached clients
-	vector<unique_ptr<HTTPClient>> clients;
+	//! The cached clients for a host
+	case_insensitive_map_t<vector<unique_ptr<HTTPClient>>> clients;
 	//! Lock to fetch a client
 	mutex lock;
 };
@@ -89,9 +89,9 @@ public:
 	void AddHeaders(HTTPHeaders &map);
 
 	// Get a Client to run requests over
-	unique_ptr<HTTPClient> GetClient();
+	unique_ptr<HTTPClient> GetClient(string host);
 	// Return the client for re-use
-	void StoreClient(unique_ptr<HTTPClient> client);
+	void StoreClient(string url, unique_ptr<HTTPClient> client);
 
 public:
 	void Close() override {

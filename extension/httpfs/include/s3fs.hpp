@@ -34,6 +34,7 @@ struct S3AuthParams {
 	string oauth2_bearer_token; // OAuth2 bearer token for GCS
 
 	static S3AuthParams ReadFrom(optional_ptr<FileOpener> opener, FileOpenerInfo &info);
+	void OverwriteRegionAndEndpoint(string &region);
 };
 
 struct AWSEnvironmentCredentialsProvider {
