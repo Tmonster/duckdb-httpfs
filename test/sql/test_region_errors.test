@@ -32,12 +32,16 @@ statement ok
 set s3_region='us-east-1';
 
 # incorrect region set, no error
-statement ok
+statement error
 select * from 's3://clickhouse-public-datasets/hits_compatible/hits.parquet' limit 1;
+----
+HTTP Error:
+
+mode output_result
 
 # see there has been a redirect
-query II
-select * from duckdb_logs();
+query III
+select request.url, request.type, response.status from duckdb_logs_parsed('HTTP');
 ----
 
 statement ok

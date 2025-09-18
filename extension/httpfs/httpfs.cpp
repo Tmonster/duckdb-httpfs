@@ -85,30 +85,26 @@ unique_ptr<HTTPParams> HTTPFSUtil::InitializeParameters(optional_ptr<FileOpener>
 	return std::move(result);
 }
 
-unique_ptr<HTTPClient> HTTPClientCache::GetClient(string url) {
+unique_ptr<HTTPClient> HTTPClientCache::GetClient(string host) {
 	lock_guard<mutex> lck(lock);
 	if (clients.size() == 0) {
 		return nullptr;
 	}
-	string path_out, proto_host_port;
-	HTTPUtil::DecomposeURL(url, path_out, proto_host_port);
-	if (clients.find(proto_host_port) == clients.end()) {
+	if (clients.find(host) == clients.end()) {
 		return nullptr;
 	}
 
-	auto client = std::move((clients[proto_host_port].back()));
-	clients[proto_host_port].pop_back();
+	auto client = std::move((clients[host].back()));
+	clients[host].pop_back();
 	return client;
 }
 
-void HTTPClientCache::StoreClient(string url, unique_ptr<HTTPClient> client) {
-	string path_out, proto_host_port;
-	HTTPUtil::DecomposeURL(url, path_out, proto_host_port);
+void HTTPClientCache::StoreClient(string host, unique_ptr<HTTPClient> client) {
 	lock_guard<mutex> lck(lock);
-	if (clients.find(proto_host_port) == clients.end()) {
-		clients[proto_host_port] = vector<unique_ptr<HTTPClient>>();
+	if (clients.find(host) == clients.end()) {
+		clients[host] = vector<unique_ptr<HTTPClient>>();
 	}
-	clients[proto_host_port].push_back(std::move(client));
+	clients[host].push_back(std::move(client));
 }
 
 unique_ptr<HTTPResponse> HTTPFileSystem::PostRequest(FileHandle &handle, string url, HTTPHeaders header_map,
@@ -135,23 +131,26 @@ unique_ptr<HTTPResponse> HTTPFileSystem::PutRequest(FileHandle &handle, string u
 unique_ptr<HTTPResponse> HTTPFileSystem::HeadRequest(FileHandle &handle, string url, HTTPHeaders header_map) {
 	auto &hfh = handle.Cast<HTTPFileHandle>();
 	auto &http_util = hfh.http_params.http_util;
-	auto http_client = hfh.GetClient(url);
+	string path_out, proto_host_port;
+	HTTPUtil::DecomposeURL(url, path_out, proto_host_port);
+	auto http_client = hfh.GetClient(proto_host_port);
 
 	HeadRequestInfo head_request(url, header_map, hfh.http_params);
 	auto response = http_util.Request(head_request, http_client);
-
-	hfh.StoreClient(url, std::move(http_client));
+	hfh.StoreClient(proto_host_port, std::move(http_client));
 	return response;
 }
 
 unique_ptr<HTTPResponse> HTTPFileSystem::DeleteRequest(FileHandle &handle, string url, HTTPHeaders header_map) {
 	auto &hfh = handle.Cast<HTTPFileHandle>();
 	auto &http_util = hfh.http_params.http_util;
-	auto http_client = hfh.GetClient(url);
+	string path_out, proto_host_port;
+	HTTPUtil::DecomposeURL(url, path_out, proto_host_port);
+	auto http_client = hfh.GetClient(proto_host_port);
 	DeleteRequestInfo delete_request(url, header_map, hfh.http_params);
 	auto response = http_util.Request(delete_request, http_client);
 
-	hfh.StoreClient(url, std::move(http_client));
+	hfh.StoreClient(proto_host_port, std::move(http_client));
 	return response;
 }
 
@@ -171,8 +170,9 @@ unique_ptr<HTTPResponse> HTTPFileSystem::GetRequest(FileHandle &handle, string u
 	auto &http_util = hfh.http_params.http_util;
 
 	D_ASSERT(hfh.cached_file_handle);
-
-	auto http_client = hfh.GetClient(url);
+	string path_out, proto_host_port;
+	HTTPUtil::DecomposeURL(url, path_out, proto_host_port);
+	auto http_client = hfh.GetClient(proto_host_port);
 	GetRequestInfo get_request(
 	    url, header_map, hfh.http_params,
 	    [&](const HTTPResponse &response) {
@@ -210,7 +210,7 @@ unique_ptr<HTTPResponse> HTTPFileSystem::GetRequest(FileHandle &handle, string u
 
 	auto response = http_util.Request(get_request, http_client);
 
-	hfh.StoreClient(url, std::move(http_client));
+	hfh.StoreClient(proto_host_port, std::move(http_client));
 	return response;
 }
 
@@ -223,7 +223,9 @@ unique_ptr<HTTPResponse> HTTPFileSystem::GetRangeRequest(FileHandle &handle, str
 	string range_expr = "bytes=" + to_string(file_offset) + "-" + to_string(file_offset + buffer_out_len - 1);
 	header_map.Insert("Range", range_expr);
 
-	auto http_client = hfh.GetClient(url);
+	string path_out, proto_host_port;
+	HTTPUtil::DecomposeURL(url, path_out, proto_host_port);
+	auto http_client = hfh.GetClient(proto_host_port);
 
 	idx_t out_offset = 0;
 
@@ -282,7 +284,7 @@ unique_ptr<HTTPResponse> HTTPFileSystem::GetRangeRequest(FileHandle &handle, str
 
 	auto response = http_util.Request(get_request, http_client);
 
-	hfh.StoreClient(url, std::move(http_client));
+	hfh.StoreClient(proto_host_port, std::move(http_client));
 	return response;
 }
 
@@ -803,9 +805,9 @@ void HTTPFileHandle::Initialize(optional_ptr<FileOpener> opener) {
 	}
 }
 
-unique_ptr<HTTPClient> HTTPFileHandle::GetClient(string url) {
+unique_ptr<HTTPClient> HTTPFileHandle::GetClient(string host) {
 	// Try to fetch a cached client
-	auto cached_client = client_cache.GetClient(url);
+	auto cached_client = client_cache.GetClient(host);
 	if (cached_client) {
 		return cached_client;
 	}
@@ -821,7 +823,9 @@ unique_ptr<HTTPClient> HTTPFileHandle::CreateClient() {
 }
 
 void HTTPFileHandle::StoreClient(string url, unique_ptr<HTTPClient> client) {
-	client_cache.StoreClient(url, std::move(client));
+	string path_out, proto_host_port;
+	HTTPUtil::DecomposeURL(url, path_out, proto_host_port);
+	client_cache.StoreClient(proto_host_port, std::move(client));
 }
 
 HTTPFileHandle::~HTTPFileHandle() {

@@ -30,9 +30,9 @@ public:
 class HTTPClientCache {
 public:
 	//! Get a client from the client cache
-	unique_ptr<HTTPClient> GetClient(string url);
+	unique_ptr<HTTPClient> GetClient(string host);
 	//! Store a client in the cache for reuse
-	void StoreClient(string url, unique_ptr<HTTPClient> client);
+	void StoreClient(string host, unique_ptr<HTTPClient> client);
 
 protected:
 	//! The cached clients for a host
@@ -89,7 +89,7 @@ public:
 	void AddHeaders(HTTPHeaders &map);
 
 	// Get a Client to run requests over
-	unique_ptr<HTTPClient> GetClient(string url);
+	unique_ptr<HTTPClient> GetClient(string host);
 	// Return the client for re-use
 	void StoreClient(string url, unique_ptr<HTTPClient> client);
 
@@ -98,7 +98,7 @@ public:
 	}
 
 protected:
-	//! Create a new Client for a specific host
+	//! Create a new Client
 	virtual unique_ptr<HTTPClient> CreateClient();
 	//! Perform a HEAD request to get the file info (if not yet loaded)
 	void LoadFileInfo();
