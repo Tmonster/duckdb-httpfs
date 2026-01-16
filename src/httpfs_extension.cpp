@@ -1,6 +1,6 @@
 #include "httpfs_extension.hpp"
-
 #include "httpfs_client.hpp"
+#include "httpfs_functions.hpp"
 #include "create_secret_functions.hpp"
 #include "duckdb.hpp"
 #include "s3fs.hpp"
@@ -109,9 +109,6 @@ static void LoadInternal(ExtensionLoader &loader) {
 	};
 	config.AddExtensionOption("httpfs_client_implementation", "Select which is the HTTPUtil implementation to be used",
 	                          LogicalType::VARCHAR, "default", callback_httpfs_client_implementation);
-	config.AddExtensionOption("enable_global_s3_configuration",
-	                          "Automatically fetch AWS credentials from environment variables.", LogicalType::BOOLEAN,
-	                          Value::BOOLEAN(true));
 
 	if (config.http_util && config.http_util->GetName() == "WasmHTTPUtils") {
 		// Already handled, do not override
@@ -119,11 +116,13 @@ static void LoadInternal(ExtensionLoader &loader) {
 		config.http_util = make_shared_ptr<HTTPFSUtil>();
 	}
 
-	auto provider = make_uniq<AWSEnvironmentCredentialsProvider>(config);
-	provider->SetAll();
-
 	CreateS3SecretFunctions::Register(loader);
 	CreateBearerTokenFunctions::Register(loader);
+
+	// Httpfs Table Functions
+	for (auto &fun : HttpfsFunctions::GetTableFunctions(loader)) {
+		loader.RegisterFunction(std::move(fun));
+	}
 
 #ifdef OVERRIDE_ENCRYPTION_UTILS
 	// set pointer to OpenSSL encryption state
