@@ -23,6 +23,9 @@ require-env DUCKDB_S3_USE_SSL
 set ignore_error_messages
 
 statement ok
+call inherit_aws_config_from_environment();
+
+statement ok
 CREATE TABLE test as SELECT * FROM range(0,10) tbl(i);
 
 foreach url_style path vhost
@@ -119,7 +122,7 @@ Unable to connect to URL "http://test-bucket-public.
 statement error
 SELECT i FROM "http://test-bucket-public.duckdb-minio-non-existent-host.com:9000/root-dir/non-existent-file-ljaslkjdas.parquet" LIMIT 3
 ----
-Could not establish connection error for HTTP HEAD to 'http://test-bucket-public.
+<REGEX>:.*IO Error.*HTTP HEAD to 'http://test-bucket-public.duckdb-minio-non-existent-host.*
 
 # S3 errors should throw on
 statement error
