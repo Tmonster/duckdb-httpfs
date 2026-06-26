@@ -227,6 +227,8 @@ S3AuthParams S3AuthParams::ReadFrom(S3KeyValueReader &secret_reader, const strin
 	secret_reader.TryGetSecretKeyOrSetting("s3_url_compatibility_mode", "s3_url_compatibility_mode",
 	                                       result.s3_url_compatibility_mode);
 	secret_reader.TryGetSecretKeyOrSetting("requester_pays", "s3_requester_pays", result.requester_pays);
+	// TEMP (credential-refresh testing): note whether the backing secret has been refreshed
+	secret_reader.TryGetSecretKey("refreshed_secret", result.refreshed_secret);
 	// Endpoint and url style are slightly more complex and require special handling for gcs and r2
 	auto endpoint_result = secret_reader.TryGetSecretKeyOrSetting("endpoint", "s3_endpoint", result.endpoint);
 	auto url_style_result = secret_reader.TryGetSecretKeyOrSetting("url_style", "s3_url_style", result.url_style);
@@ -351,7 +353,12 @@ S3ConfigParams S3ConfigParams::ReadFrom(optional_ptr<FileOpener> opener) {
 		max_upload_threads = S3ConfigParams::DEFAULT_MAX_UPLOAD_THREADS;
 	}
 
-	return {uploader_max_filesize, max_parts_per_file, max_upload_threads};
+	bool refresh_required_on_range = false;
+	if (FileOpener::TryGetCurrentSetting(opener, "refresh_required_on_range", value)) {
+		refresh_required_on_range = value.GetValue<bool>();
+	}
+
+	return {uploader_max_filesize, max_parts_per_file, max_upload_threads, refresh_required_on_range};
 }
 
 void S3FileHandle::Close() {
@@ -629,6 +636,14 @@ unique_ptr<HTTPResponse> S3FileSystem::GetRangeRequest(FileHandle &handle, strin
                                                        idx_t file_offset, char *buffer_out, idx_t buffer_out_len) {
 	auto &s3_handle = handle.Cast<S3FileHandle>();
 	auto auth_params = s3_handle.auth_params;
+
+	// Credential-refresh testing: when 'refresh_required_on_range' is set, fail every range read with a
+	// 403 until the secret backing this read has been refreshed (i.e. carries refreshed_secret="true").
+	// This forces a deterministic mid-read auth failure for short-lived Lakekeeper credentials.
+	if (s3_handle.config_params.refresh_required_on_range && auth_params.refreshed_secret != "true") {
+		HTTPResponse forbidden(HTTPStatusCode::Forbidden_403);
+		throw GetS3Error(auth_params, forbidden, s3_url);
+	}
 	auto parsed_s3_url = S3UrlParse(s3_url, auth_params);
 
 	string query_string;
@@ -705,6 +720,26 @@ HTTPMetadataCacheEntry S3FileHandle::GetCacheEntry() const {
 
 void S3FileHandle::Initialize(optional_ptr<FileOpener> opener) {
 	try {
+		auto context = opener->TryGetClientContext();
+		// Credential-refresh testing: when 'refresh_required_on_init' is set, require the backing secret
+		// to have been refreshed (carry refreshed_secret="true"). Otherwise throw to trip the refresh +
+		// retry handled in the catch block below.
+		Value refresh_required_on_init;
+		if (context && FileOpener::TryGetCurrentSetting(opener, "refresh_required_on_init", refresh_required_on_init) &&
+		    refresh_required_on_init.GetValue<bool>()) {
+			auto transaction = CatalogTransaction::GetSystemCatalogTransaction(*context);
+			for (const string type : {"s3", "r2", "gcs", "aws"}) {
+				auto res = context->db->GetSecretManager().LookupSecret(transaction, path, type);
+				if (res.HasMatch()) {
+					auto &secret = res.GetSecret();
+					const auto &kv_secret = dynamic_cast<const KeyValueSecret &>(secret);
+					Value refreshed_secret;
+					if (!kv_secret.TryGetValue("refreshed_secret", refreshed_secret)) {
+						throw HTTPException("need to trip refresh");
+					}
+				}
+			}
+		}
 		HTTPFileHandle::Initialize(opener);
 	} catch (std::exception &ex) {
 		ErrorData error(ex);

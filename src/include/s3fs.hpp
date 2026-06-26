@@ -60,6 +60,8 @@ struct S3AuthParams {
 	bool s3_url_compatibility_mode = false;
 	bool requester_pays = false;
 	string oauth2_bearer_token; // OAuth2 bearer token for GCS
+	// TEMP (credential-refresh testing): "true" once the backing secret has been refreshed
+	string refreshed_secret;
 
 	static S3AuthParams ReadFrom(optional_ptr<FileOpener> opener, FileOpenerInfo &info);
 	static S3AuthParams ReadFrom(S3KeyValueReader &secret_reader, const std::string &file_path);
@@ -109,6 +111,8 @@ struct S3ConfigParams {
 	uint64_t max_file_size;
 	uint64_t max_parts_per_file;
 	uint64_t max_upload_threads;
+	// Credential-refresh testing: require a refreshed secret during GetRangeRequest (read at open).
+	bool refresh_required_on_range;
 
 	static S3ConfigParams ReadFrom(optional_ptr<FileOpener> opener);
 };

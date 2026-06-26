@@ -116,6 +116,14 @@ static void LoadInternal(ExtensionLoader &loader) {
 	                          Value(false));
 	config.AddExtensionOption("s3_version_id_pinning", "Pin S3 reads to a specific object version for consistency",
 	                          LogicalType::BOOLEAN, Value(false));
+	config.AddExtensionOption(
+	    "refresh_required_on_init",
+	    "Credential-refresh testing: require the backing secret to be refreshed during FileHandle::Initialize",
+	    LogicalType::BOOLEAN, Value(false));
+	config.AddExtensionOption(
+	    "refresh_required_on_range",
+	    "Credential-refresh testing: require the backing secret to be refreshed during GetRangeRequest",
+	    LogicalType::BOOLEAN, Value(false));
 
 	// HuggingFace options
 	config.AddExtensionOption("hf_max_per_page", "Debug option to limit number of items returned in list requests",

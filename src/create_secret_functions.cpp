@@ -132,6 +132,8 @@ unique_ptr<BaseSecret> CreateS3SecretFunctions::CreateSecretFunctionInternal(Cli
 			secret->secret_map["http_proxy_username"] = named_param.second;
 		} else if (lower_name == "extra_http_headers") {
 			secret->secret_map["extra_http_headers"] = named_param.second;
+		} else if (lower_name == "expires_at") {
+			secret->secret_map["expires_at"] = named_param.second;
 		} else {
 			throw InvalidInputException("Unknown named parameter passed to CreateSecretFunctionInternal: " +
 			                            lower_name);
